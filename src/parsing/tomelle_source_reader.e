@@ -4,6 +4,9 @@ note
 class
     TOMELLE_SOURCE_READER
 
+inherit
+    TOMELLE_SOURCE_PROVIDER
+
 feature -- Access
 
     is_readable (a_path: PATH): BOOLEAN

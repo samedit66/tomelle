@@ -4,6 +4,9 @@ note
 class
     TOMELLE_SOURCE_VALIDATOR
 
+inherit
+    TOMELLE_SOURCE_VALIDATION_POLICY
+
 feature -- Validation
 
     is_valid (a_source: STRING_32): BOOLEAN

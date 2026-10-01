@@ -102,7 +102,7 @@ feature -- Copying
             independent: Result /= Current
         end
 
-feature {TOMELLE_DOCUMENT} -- Document copy support
+feature {TOMELLE_DOCUMENT, TOMELLE_DOCUMENT_COPIER} -- Document copy support
 
     independent_copy_with_value (a_value: TOMELLE_VALUE): TOMELLE_ENTRY
             -- Copy this physical entry while linking it to `a_value`.

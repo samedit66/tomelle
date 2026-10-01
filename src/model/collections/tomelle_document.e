@@ -18,7 +18,7 @@ feature {NONE} -- Initialization
     make
         do
             create root.make
-            create internal_items.make (0)
+            create representation_store.make
         ensure
             empty: is_empty
         end
@@ -30,25 +30,18 @@ feature -- Access
     representation: STRING_32
             -- Lossless source text while pristine; ordered item text otherwise.
         do
-            if has_preserved_source and then attached source_text as l_source then
-                Result := l_source.twin
-            else
-                create Result.make_empty
-                across internal_items as l_item loop
-                    Result.append (l_item.representation)
-                end
-            end
+            Result := representation_store.representation (root)
         end
 
     items: ITERABLE [TOMELLE_ITEM]
             -- Physical document items in source order.
         do
-            Result := internal_items
+            Result := representation_store.items
         end
 
     item_count: INTEGER
         do
-            Result := internal_items.count
+            Result := representation_store.item_count
         end
 
     value (a_path: TOMELLE_PATH): detachable TOMELLE_VALUE
@@ -178,7 +171,7 @@ feature -- General modification
     wipe_out
         do
             root.wipe_out
-            internal_items.wipe_out
+            representation_store.wipe_out
             is_modified := True
         ensure
             empty: is_empty
@@ -281,25 +274,8 @@ feature -- Typed modification
 feature -- Copying
 
     independent_copy: TOMELLE_DOCUMENT
-        local
-            l_root_copy: TOMELLE_TABLE
         do
-            create Result.make
-            l_root_copy := root.cloned_table
-            Result.set_root (l_root_copy)
-            across internal_items as l_item loop
-                if attached {TOMELLE_ENTRY} l_item as l_entry and then
-                    attached cloned_counterpart (l_entry.value, root, l_root_copy) as l_value_copy
-                then
-                    Result.append_item (l_entry.independent_copy_with_value (l_value_copy))
-                else
-                    Result.append_item_copy (l_item)
-                end
-            end
-            if attached source_text as l_source then
-                Result.set_source_text (l_source)
-            end
-            Result.set_modified (is_modified)
+            Result := document_copier.copy (Current)
         ensure
             independent: Result /= Current
             equivalent: Result.is_equal (Current)
@@ -312,7 +288,12 @@ feature -- Comparison
             Result := root.is_equal (other.root)
         end
 
-feature {TOMELLE_DOCUMENT} -- Copy support
+feature {TOMELLE_DOCUMENT, TOMELLE_DOCUMENT_COPIER} -- Copy support
+
+    source_text: detachable STRING_32
+        do
+            Result := representation_store.source_text
+        end
 
     set_root (a_root: TOMELLE_TABLE)
         do
@@ -320,25 +301,13 @@ feature {TOMELLE_DOCUMENT} -- Copy support
         end
 
     append_item_copy (a_item: TOMELLE_ITEM)
-        local
-            l_comment_copy: TOMELLE_COMMENT
-            l_whitespace_copy: TOMELLE_WHITESPACE
-            l_header_copy: TOMELLE_HEADER
         do
-            if attached {TOMELLE_ENTRY} a_item as l_entry then
-                internal_items.extend (l_entry.independent_copy)
-            elseif attached {TOMELLE_COMMENT} a_item as l_comment then
-                create l_comment_copy.make (l_comment.text)
-                l_comment_copy.set_trivia (l_comment.trivia)
-                internal_items.extend (l_comment_copy)
-            elseif attached {TOMELLE_WHITESPACE} a_item as l_whitespace then
-                create l_whitespace_copy.make (l_whitespace.text)
-                l_whitespace_copy.set_trivia (l_whitespace.trivia)
-                internal_items.extend (l_whitespace_copy)
-            elseif attached {TOMELLE_HEADER} a_item as l_header then
-                create l_header_copy.make (l_header.source, l_header.is_array)
-                internal_items.extend (l_header_copy)
-            end
+            representation_store.append_item_copy (a_item)
+        end
+
+    append_item_copy_with_value (a_entry: TOMELLE_ENTRY; a_value: TOMELLE_VALUE)
+        do
+            representation_store.append_item (a_entry.independent_copy_with_value (a_value))
         end
 
     set_modified (a_modified: BOOLEAN)
@@ -350,8 +319,7 @@ feature {TOMELLE_DOCUMENT, TOMELLE_DOCUMENT_BUILDER} -- Parser construction
 
     set_source_text (a_source: READABLE_STRING_GENERAL)
         do
-            source_text := a_source.as_string_32.twin
-            source_model_representation := root.representation
+            representation_store.set_source_text (a_source, root)
             is_modified := False
         ensure
             pristine: not is_modified
@@ -359,16 +327,12 @@ feature {TOMELLE_DOCUMENT, TOMELLE_DOCUMENT_BUILDER} -- Parser construction
 
     append_item (a_item: TOMELLE_ITEM)
         do
-            internal_items.extend (a_item)
+            representation_store.append_item (a_item)
         ensure
             one_more: item_count = old item_count + 1
         end
 
 feature {NONE} -- Implementation
-
-    internal_items: ARRAYED_LIST [TOMELLE_ITEM]
-    source_text: detachable STRING_32
-    source_model_representation: detachable STRING_32
 
 feature -- Status report
 
@@ -377,9 +341,7 @@ feature -- Status report
     has_preserved_source: BOOLEAN
             -- Can the original text be emitted without hiding semantic mutations?
         do
-            Result := not is_modified and then attached source_text and then
-                attached source_model_representation as l_original and then
-                root.representation.same_string (l_original)
+            Result := not is_modified and then representation_store.has_preserved_source (root)
         end
 
     key_syntax: TOMELLE_KEY_SYNTAX
@@ -412,29 +374,19 @@ feature -- Status report
             else
                 create l_key.make_parsed (a_expression, a_expression, " = ")
                 create l_entry.make (l_key, a_value)
-                internal_items.extend (l_entry)
+                representation_store.append_item (l_entry)
             end
             is_modified := True
         end
 
     replace_physical_value (a_old, a_new: TOMELLE_VALUE)
         do
-            across internal_items as l_item loop
-                if attached {TOMELLE_ENTRY} l_item as l_entry and then l_entry.value = a_old then
-                    l_entry.replace (a_new)
-                end
-            end
+            representation_store.replace_value (a_old, a_new)
         end
 
     remove_physical_value (a_value: TOMELLE_VALUE)
         do
-            from internal_items.start until internal_items.after loop
-                if attached {TOMELLE_ENTRY} internal_items.item as l_entry and then l_entry.value = a_value then
-                    internal_items.remove
-                else
-                    internal_items.forth
-                end
-            end
+            representation_store.remove_value (a_value)
         end
 
     expression_for_path (a_path: TOMELLE_PATH): STRING_32
@@ -451,32 +403,13 @@ feature -- Status report
             end
         end
 
-    cloned_counterpart (a_target, a_source, a_copy: TOMELLE_VALUE): detachable TOMELLE_VALUE
-            -- Value in `a_copy` corresponding by position to `a_target` in `a_source`.
-        local
-            i: INTEGER
-        do
-            if a_source = a_target then
-                Result := a_copy
-            elseif attached {TOMELLE_TABLE} a_source as l_source_table and then
-                attached {TOMELLE_TABLE} a_copy as l_copy_table
-            then
-                across l_source_table.entries as l_entry until Result /= Void loop
-                    check attached l_copy_table [l_entry.key.value] as l_copy_value then
-                        Result := cloned_counterpart (a_target, l_entry.value, l_copy_value)
-                    end
-                end
-            elseif attached {TOMELLE_ARRAY} a_source as l_source_array and then
-                attached {TOMELLE_ARRAY} a_copy as l_copy_array
-            then
-                from i := 1 until i > l_source_array.count or else Result /= Void loop
-                    Result := cloned_counterpart (a_target, l_source_array [i], l_copy_array [i])
-                    i := i + 1
-                end
-            end
+    model_builder: TOMELLE_MODEL_BUILDER
+        once
+            create Result
         end
 
-    model_builder: TOMELLE_MODEL_BUILDER
+    representation_store: TOMELLE_DOCUMENT_REPRESENTATION
+    document_copier: TOMELLE_DOCUMENT_COPIER
         once
             create Result
         end

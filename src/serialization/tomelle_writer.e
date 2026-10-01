@@ -50,7 +50,7 @@ feature -- Serialization
                 check attached a_document.root [l_key] as v then
                     l_value := v
                 end
-                Result.append (serialized_key (l_key))
+                Result.append (value_serializer.serialized_key (l_key))
                 Result.append (" = ")
                 Result.append (serialized_value (l_value))
                 Result.extend ('%N')
@@ -118,51 +118,7 @@ feature {NONE} -- Serialization implementation
 
     serialized_value (a_value: TOMELLE_VALUE): STRING_32
         do
-            if attached {TOMELLE_STRING} a_value as l_string then
-                Result := serialized_string (l_string.value)
-            elseif attached {TOMELLE_INTEGER} a_value as l_integer then
-                Result := l_integer.value.out
-            elseif attached {TOMELLE_FLOAT} a_value as l_float_value then
-                if l_float_value.value.is_nan then Result := "nan"
-                elseif l_float_value.value.is_positive_infinity then Result := "inf"
-                elseif l_float_value.value.is_negative_infinity then Result := "-inf"
-                else
-                    Result := l_float_value.canonical_text.twin
-                end
-            elseif attached {TOMELLE_BOOLEAN} a_value as l_boolean then
-                if l_boolean.value then
-                    Result := "true"
-                else
-                    Result := "false"
-                end
-            elseif attached {TOMELLE_LOCAL_DATE_VALUE} a_value as l_date then
-                Result := serialized_date (l_date.value)
-            elseif attached {TOMELLE_LOCAL_TIME_VALUE} a_value as l_time then
-                Result := serialized_time (l_time.value)
-            elseif attached {TOMELLE_LOCAL_DATE_TIME_VALUE} a_value as l_date_time then
-                Result := serialized_date (l_date_time.value.date) + "T" + serialized_time (l_date_time.value.time)
-            elseif attached {TOMELLE_OFFSET_DATE_TIME_VALUE} a_value as l_offset then
-                Result := serialized_date (l_offset.value.local_date_time.date) + "T" +
-                    serialized_time (l_offset.value.local_date_time.time)
-                if l_offset.value.is_utc then Result.extend ('Z')
-                elseif l_offset.value.offset_minutes < 0 then
-                    Result.extend ('-')
-                    Result.append (padded (-(l_offset.value.offset_minutes) // 60, 2))
-                    Result.extend (':')
-                    Result.append (padded (-(l_offset.value.offset_minutes) \\ 60, 2))
-                else
-                    Result.extend ('+')
-                    Result.append (padded (l_offset.value.offset_minutes // 60, 2))
-                    Result.extend (':')
-                    Result.append (padded (l_offset.value.offset_minutes \\ 60, 2))
-                end
-            elseif attached {TOMELLE_ARRAY} a_value as l_array then
-                Result := serialized_array (l_array)
-            else
-                check attached {TOMELLE_TABLE} a_value as l_table then
-                    Result := serialized_table (l_table)
-                end
-            end
+            Result := value_serializer.serialized (a_value)
         end
 
     serialized_array (a_array: TOMELLE_ARRAY): STRING_32
@@ -295,6 +251,11 @@ feature {NONE} -- UTF-8
     error_codes: TOMELLE_ERROR_CODE
         once
             create Result.default_create
+        end
+
+    value_serializer: TOMELLE_VALUE_SERIALIZER
+        once
+            create Result
         end
 
 invariant

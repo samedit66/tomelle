@@ -5,12 +5,30 @@ class
     TOMELLE_PARSER
 
 create
-    make
+    make,
+    make_with_dependencies
 
-feature {NONE} -- Initialization
+feature -- Initialization
 
     make
         do
+            create {TOMELLE_SOURCE_READER} source_reader
+            create {TOMELLE_SOURCE_VALIDATOR} source_validator
+            create {TOMELLE_DOCUMENT_BUILDING_POLICY} build_policy
+        end
+
+    make_with_dependencies (a_source_reader: TOMELLE_SOURCE_PROVIDER;
+        a_source_validator: TOMELLE_SOURCE_VALIDATION_POLICY;
+        a_build_policy: TOMELLE_DOCUMENT_BUILD_POLICY)
+            -- Construct the parser with replaceable boundary policies.
+        require
+            source_reader_attached: a_source_reader /= Void
+            source_validator_attached: a_source_validator /= Void
+            build_policy_attached: a_build_policy /= Void
+        do
+            source_reader := a_source_reader
+            source_validator := a_source_validator
+            build_policy := a_build_policy
         end
 
 feature -- Parsing
@@ -114,14 +132,12 @@ feature {NONE} -- Pipeline
         local
             l_document: TOMELLE_DOCUMENT
             l_errors: TOMELLE_ERROR_COLLECTOR
-            l_builder: TOMELLE_DOCUMENT_BUILDER
         do
             create l_errors.make
             l_errors.set_source_name (a_source_name)
             create l_document.make
             if source_validator.is_valid (a_source) then
-                create l_builder.make (l_errors)
-                l_builder.build (a_source, l_document)
+                build_policy.build (a_source, l_document, l_errors)
             else
                 l_errors.add (error_codes.invalid_syntax,
                     "Invalid control character", Void, 1, 1)
@@ -135,8 +151,9 @@ feature {NONE} -- Pipeline
 
 feature {NONE} -- Dependencies
 
-    source_reader: TOMELLE_SOURCE_READER once create Result end
-    source_validator: TOMELLE_SOURCE_VALIDATOR once create Result end
+    source_reader: TOMELLE_SOURCE_PROVIDER
+    source_validator: TOMELLE_SOURCE_VALIDATION_POLICY
+    build_policy: TOMELLE_DOCUMENT_BUILD_POLICY
     error_codes: TOMELLE_ERROR_CODE once create Result.default_create end
 
 end
